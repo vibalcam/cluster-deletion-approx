@@ -6,38 +6,13 @@ import pandas as pd
 import time
 
 
-# names_graphs = [
-#     # "KarateA",
-#     # "dolphinsA",
-#     # "lesmisA",
-#     # "polbooksA",
-#     # "adjnounA",
-#     # "footballA",
-
-#     "Harvard500A",
-#     "Erdos991A",
-#     "celegansneuralA",
-#     "Netscience",
-#     "celegansmetabolicA",
-#     "RogetA",
-#     "SmaGriA",
-#     "standard_emailA",
-#     "standard_polblogsA",
-#     "standard_ca-GrQc",
-#     "standard_caHepThA",
-#     "standard_EmailEnronA",
-#     "standard_condmat2005A",
-#     "standard_ca-AstroPhA",
-#     "standard_loc-Brightkite",
-# ]
-
 lb_graphs = {
-    # "KarateA" : ("", None, None),
-    # "dolphinsA" : ("", None, None),
-    # "lesmisA" : ("", None, None),
-    # "polbooksA" : ("", None, None),
-    # "adjnounA" : ("", None, None),
-    # "footballA" : ("", None, None),
+    "KarateA" : ("Karate", 36, 71),
+    "dolphinsA" : ("Dolphins", 72, 143),
+    "lesmisA" : ("Les-Miserables", 92, 187),
+    "polbooksA" : ("PolBooks", 211, 414),
+    "adjnounA" : ("Adjnoun", 211, 422),
+    "footballA" : ("Football", 256, 538),
 
     "Netscience": ("NetScience", 315, 669),
     "Erdos991A": ("Erdos991", 674, 1338),
@@ -61,26 +36,21 @@ def det_cd(g):
     # get STC labeling from vertex cover on Gallai
     stc = cv
 
-    # set values for pivot
+    # set weight and budget values for pivot
     w = lambda i,j: (1,0) if g.has_edge(i,j) else (0,np.inf)
     b = lambda i,j: 1 if get_gallai_node(i,j) in stc else 0
     g2 = g.copy()
 
     # remove edges in STC labeling
     g2.remove_edges_from(stc)
-
+    # run deterministic pivot
     return det_pivot(g2, w, b)
 
 
 def det_pivot(g, w, b):
-    # S = set()
     clus = np.zeros(len(g.nodes))
     n_clus = 0
-    
-    # todo stop when no nodes or when no edges
-    # todo when stop, should rest of nodes be added to S or not
 
-    # while not nx.is_empty(g):
     # while there are unclustered nodes
     while np.sum(clus == 0) > 0:
         n_clus += 1
@@ -100,6 +70,7 @@ def det_pivot(g, w, b):
             num[i] += w(j,k)[0]
             den[i] += b(j,k)        # should be 0
             assert b(j,k) == 0, "Value should be 0"
+
             num[j] += w(i,k)[0]
             den[j] += b(i,k)        # should be 0
             assert b(i,k) == 0, "Value should be 0"
@@ -113,33 +84,12 @@ def det_pivot(g, w, b):
                         # open wedge centered at k found
                         update_wedge_values(i,j,k)
 
-        # for i,k in g.edges:
-        #     # check for wedges centered at k
-        #     for j in g.neighbors(k):
-        #         if j != i and not g.has_edge(i,j):
-        #             # then we have a open wedge centered at k
-        #             update_wedge_values(i,j,k)
-        #     # check for wedges centered at i
-        #     for j in g.neighbors(i):
-        #         if j != k and not g.has_edge(k,j):
-        #             # then we have a open wedge centered at i
-        #             update_wedge_values(j,k,i)
         # select pivot
         p = num/den
-        # if np.isnan(p).all():
         if not np.isfinite(p).any():
-            assert g.number_of_edges() == 0, "Number of edges should be 0"
             p = list(g.nodes)[0]
         else:
             p = np.nanargmin(p)
-        
-        # # form cluster
-        # c = set(g.neighbors(p))
-        # c.add(p)
-        # S.update(c)
-
-        # # update graph
-        # g.remove_nodes_from(c)
 
         # form cluster and update graph
         c = set(g.neighbors(p))
@@ -153,9 +103,9 @@ def det_pivot(g, w, b):
 
 def build_gallai(g):
     gallai=nx.Graph()
+    
     # for each edge (i,j) add a node
     # for each open wedge centered at k, edge between vik and vjk
-    
     for k in g.nodes:
         neighbors_k = list(g.neighbors(k))
         # search wedges centered at k for every k in G
@@ -200,19 +150,12 @@ def check_cd(g, clus):
         # accumulate number of edges
         n_edges += sub_g.number_of_edges()
 
-        # for i in range(len(c)):
-            # for j in range(i+1, len(c)):
-            #     if not g.has_edge(c[i],c[j]):
-            #         n_edges += 1
-            #         return False
-
     # return number of edges deleted and whether this is a cluster
     return True, g.number_of_edges() - n_edges
 
 
 if __name__== "__main__" :
     results = []
-    # for ng, g_name in enumerate(names_graphs):
     for ng, g_name in enumerate(lb_graphs.keys()):
 
         print(f"Graph {ng} of {len(lb_graphs)}")
@@ -236,6 +179,7 @@ if __name__== "__main__" :
         tic = time.time()
         clus = det_cd(graph)
         toc = time.time()
+        
         # check clustering feasible cd and cd objective
         is_cd, n_del_edges = check_cd(graph, clus)
         assert is_cd, "Clustering not feasible CD"
@@ -245,27 +189,35 @@ if __name__== "__main__" :
 
         # results
         g_info = lb_graphs[g_name]
-        results.append([g_info[0], n_del_edges, g_info[1], g_info[2], toc-tic])
+        results.append([g_info[0], g_info[1], n_del_edges, g_info[2], toc-tic])
 
-    df = pd.DataFrame(results, columns=["Graph", "ub", "lb", "ubpaper", "Runtime"])
+    df = pd.DataFrame(results, columns=["Graph", "LB", "UB Det", "UB Rand", "Runtime"])
     # calculate ratios
-    df["Ratio"] = df.ub / df.lb
-    df["RatioPaper"] = df.ubpaper / df.lb
+    df["Ratio Det"] = df["UB Det"] / df["LB"]
+    df["Ratio Rand"] = df["UB Rand"] / df["LB"]
+    # reorder results
+    df = df[["Graph", "LB", "UB Det", "UB Rand", "Ratio Det", "Ratio Rand", "Runtime"]]
     # show results
     print(df.to_latex(escape=True, decimal=".", index=False))
     print(df)
 
 
-#                 Graph     ub    lb  ubpaper   Runtime     Ratio  RatioPaper
-# 0          NETSCIENCE    546   315      669  0.506141  1.733333    2.123810
-# 1            Erdos991   1353   674     1338  0.226215  2.007418    1.985163
-# 2  Celegans-Metabolic   1933   966     1917  0.606921  2.001035    1.984472
-# 3          Harvard500   1535   776     1548  0.735813  1.978093    1.994845
-# 4     Celegans-Neural   2130  1062     2117  0.304325  2.005650    1.993409
-# 5               Roget   3583  1788     3571  0.600492  2.003915    1.997204
-# 6              SmaGri   4856  2410     4811  1.432339  2.014938    1.996266
-# 7               Email   5230  2616     5169  2.532014  1.999235    1.975917
-# 8            PolBlogs  16690  8336    16660  9.858507  2.002159    1.998560
+#                  Graph    LB  UB Det  UB Rand  Ratio Det  Ratio Rand    Runtime
+# 0               Karate    36      71       71   1.972222    1.972222   0.019125  
+# 1             Dolphins    72     145      143   2.013889    1.986111   0.034291  
+# 2       Les-Miserables    92     164      187   1.782609    2.032609   0.096063  
+# 3             PolBooks   211     424      414   2.009479    1.962085   0.122360  
+# 4              Adjnoun   211     418      422   1.981043    2.000000   0.131593  
+# 5             Football   256     498      538   1.945312    2.101562   0.379311  
+# 6           NetScience   315     546      669   1.733333    2.123810   1.330703  
+# 7             Erdos991   674    1353     1338   2.007418    1.985163   0.682970  
+# 8   Celegans-Metabolic   966    1933     1917   2.001035    1.984472   1.540330  
+# 9           Harvard500   776    1535     1548   1.978093    1.994845   1.969798  
+# 10     Celegans-Neural  1062    2130     2117   2.005650    1.993409   0.549051  
+# 11               Roget  1788    3583     3571   2.003915    1.997204   1.050025  
+# 12              SmaGri  2410    4856     4811   2.014938    1.996266   3.224215  
+# 13               Email  2616    5230     5169   1.999235    1.975917   5.739860  
+# 14            PolBlogs  8336   16690    16660   2.002159    1.998560  14.279180
 
 
 #                 Graph     ub    lb  ubpaper   Runtime     Ratio  RatioPaper
