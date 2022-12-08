@@ -44,10 +44,10 @@ def det_cd(g):
     # remove edges in STC labeling
     g2.remove_edges_from(stc)
     # run deterministic pivot
-    return det_pivot(g2, w, b)
+    return det_pivot(g2, w, b, g)
 
 
-def det_pivot(g, w, b):
+def det_pivot(g, w, b, g_org):
     clus = np.zeros(len(g.nodes))
     n_clus = 0
 
@@ -62,34 +62,45 @@ def det_pivot(g, w, b):
         # if edge opposite to node n does not exist, then Tk-
         def update_wedge_values(i,j,k):
             # update values for k (center), Tk-
-            num[k] += w(i,j)[1]     # should be 0 or inf
-            assert w(i,j)[1] == 0 or np.isinf(w(i,j)[1]), "Value should be 0 or inf"
+            num[k] += w(i,j)[1]
+            assert w(i,j)[1] == 0, "Value should be "
             den[k] += b(i,j)
+            assert b(i,j) == 1, "Value should be 1"
 
             # update values for other nodes, Tk+
             num[i] += w(j,k)[0]
-            den[i] += b(j,k)        # should be 0
+            assert w(j,k)[0] == 1, "Value should be 1"
+            den[i] += b(j,k)
             assert b(j,k) == 0, "Value should be 0"
 
             num[j] += w(i,k)[0]
-            den[j] += b(i,k)        # should be 0
+            assert w(i,k)[0] == 1, "Value should be 1"
+            den[j] += b(i,k)
             assert b(i,k) == 0, "Value should be 0"
 
         # search wedges centered at k for every k in G
+        n_wedges = 0 # just to check when no wedges found
         for k in g.nodes:
             neighbors_k = list(g.neighbors(k))
-            for i in neighbors_k:
-                for j in neighbors_k:
+            for idx1 in range(len(neighbors_k)):
+                i = neighbors_k[idx1]
+                for idx2 in range(idx1+1, len(neighbors_k)):
+                    j = neighbors_k[idx2]
                     if i != j and not g.has_edge(i,j):
+                        n_wedges += 1
                         # open wedge centered at k found
                         update_wedge_values(i,j,k)
+                        # check open wedge is a triangle in original graph
+                        assert g_org.has_edge(i,j)
 
         # select pivot
         p = num/den
-        if not np.isfinite(p).any():
+        if n_wedges == 0:
             p = list(g.nodes)[0]
         else:
+            assert np.isfinite(p).any()
             p = np.nanargmin(p)
+        # p = np.random.choice(g.nodes()).item()
 
         # form cluster and update graph
         c = set(g.neighbors(p))
@@ -109,10 +120,12 @@ def build_gallai(g):
     for k in g.nodes:
         neighbors_k = list(g.neighbors(k))
         # search wedges centered at k for every k in G
-        for i in neighbors_k:
+        for idx1 in range(len(neighbors_k)):
+            i = neighbors_k[idx1]
             # add node (k,i)
             gallai.add_node(get_gallai_node(i,k))
-            for j in neighbors_k:
+            for idx2 in range(idx1+1, len(neighbors_k)):
+                j = neighbors_k[idx2]
                 if i != j and not g.has_edge(i,j):
                     # open wedge centered at k found
                     gallai.add_edge(get_gallai_node(i,k), get_gallai_node(j,k))
@@ -189,35 +202,35 @@ if __name__== "__main__" :
 
         # results
         g_info = lb_graphs[g_name]
-        results.append([g_info[0], g_info[1], n_del_edges, g_info[2], toc-tic])
+        results.append([g_info[0], g_info[1], n_del_edges, g_info[2], toc-tic, graph.number_of_nodes(), graph.number_of_edges()])
 
-    df = pd.DataFrame(results, columns=["Graph", "LB", "UB Det", "UB Rand", "Runtime"])
+    df = pd.DataFrame(results, columns=["Graph", "LB", "UB Det", "UB Rand", "Runtime", "|V|", "|E|"])
     # calculate ratios
     df["Ratio Det"] = df["UB Det"] / df["LB"]
     df["Ratio Rand"] = df["UB Rand"] / df["LB"]
     # reorder results
-    df = df[["Graph", "LB", "UB Det", "UB Rand", "Ratio Det", "Ratio Rand", "Runtime"]]
+    df = df[["Graph", "LB", "UB Det", "UB Rand", "Ratio Det", "Ratio Rand", "|V|", "|E|", "Runtime"]]
+
     # show results
-    print(df.to_latex(escape=True, decimal=".", index=False))
+    print(df.round(2).to_latex(escape=True, decimal=".", index=False))
     print(df)
 
 
-#                  Graph    LB  UB Det  UB Rand  Ratio Det  Ratio Rand    Runtime
-# 0               Karate    36      71       71   1.972222    1.972222   0.019125  
-# 1             Dolphins    72     145      143   2.013889    1.986111   0.034291  
-# 2       Les-Miserables    92     164      187   1.782609    2.032609   0.096063  
-# 3             PolBooks   211     424      414   2.009479    1.962085   0.122360  
-# 4              Adjnoun   211     418      422   1.981043    2.000000   0.131593  
-# 5             Football   256     498      538   1.945312    2.101562   0.379311  
-# 6           NetScience   315     546      669   1.733333    2.123810   1.330703  
-# 7             Erdos991   674    1353     1338   2.007418    1.985163   0.682970  
-# 8   Celegans-Metabolic   966    1933     1917   2.001035    1.984472   1.540330  
-# 9           Harvard500   776    1535     1548   1.978093    1.994845   1.969798  
-# 10     Celegans-Neural  1062    2130     2117   2.005650    1.993409   0.549051  
-# 11               Roget  1788    3583     3571   2.003915    1.997204   1.050025  
-# 12              SmaGri  2410    4856     4811   2.014938    1.996266   3.224215  
-# 13               Email  2616    5230     5169   1.999235    1.975917   5.739860  
-# 14            PolBlogs  8336   16690    16660   2.002159    1.998560  14.279180
+# 0               Karate    36      71       71   1.972222    1.972222    34     78  0.005993
+# 1             Dolphins    72     145      143   2.013889    1.986111    62    159  0.015078
+# 2       Les-Miserables    92     164      187   1.782609    2.032609    77    254  0.039277
+# 3             PolBooks   211     424      414   2.009479    1.962085   105    441  0.041942
+# 4              Adjnoun   211     418      422   1.981043    2.000000   112    425  0.064109
+# 5             Football   256     498      538   1.945312    2.101562   115    613  0.128026
+# 6           NetScience   315     546      669   1.733333    2.123810   379    914  0.453962
+# 7             Erdos991   674    1353     1338   2.007418    1.985163   446   1413  0.217738
+# 8   Celegans-Metabolic   966    1933     1917   2.001035    1.984472   453   2025  0.479926
+# 9           Harvard500   776    1535     1548   1.978093    1.994845   500   2043  0.571453
+# 10     Celegans-Neural  1062    2130     2117   2.005650    1.993409   297   2148  0.254527
+# 11               Roget  1788    3583     3571   2.003915    1.997204   994   3640  0.775708
+# 12              SmaGri  2410    4856     4811   2.014938    1.996266  1024   4916  1.253226
+# 13               Email  2616    5230     5169   1.999235    1.975917  1133   5451  2.304043
+# 14            PolBlogs  8336   16690    16660   2.002159    1.998560  1222  16714  5.550754
 
 
 #                 Graph     ub    lb  ubpaper   Runtime     Ratio  RatioPaper
